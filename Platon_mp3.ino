@@ -8,8 +8,27 @@
 #include <IRremote.h>
 #include <DFMiniMp3.h>
 #include <SoftwareSerial.h>
-// forward declare the notify class, just the name
-//
+
+//--------------------- НАСТРОЙКИ ----------------------
+#define CH_NUM 0x60   // номер канала (должен совпадать с передатчиком)
+//--------------------- НАСТРОЙКИ ----------------------
+
+//--------------------- ДЛЯ РАЗРАБОТЧИКОВ -----------------------
+// УРОВЕНЬ МОЩНОСТИ ПЕРЕДАТЧИКА
+// На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
+#define SIG_POWER RF24_PA_MIN
+
+// СКОРОСТЬ ОБМЕНА
+// На выбор RF24_2MBPS, RF24_1MBPS, RF24_250KBPS
+// должна быть одинакова на приёмнике и передатчике!
+// при самой низкой скорости имеем самую высокую чувствительность и дальность!!
+// ВНИМАНИЕ!!! enableAckPayload НЕ РАБОТАЕТ НА СКОРОСТИ 250 kbps!
+#define SIG_SPEED RF24_1MBPS
+#include <SPI.h>
+#include "nRF24L01.h"
+#include "RF24.h"
+
+RF24 radio(9, 10);   // "создать" модуль на пинах 9 и 10 для НАНО/УНО
 
 #define SPEEKER 8
 SoftwareSerial secondarySerial(3, 4); // RX, TX
@@ -36,6 +55,13 @@ DfMp3 dfmp3(secondarySerial);
 #define BUTT_RITE 0x5A
 
 uint8_t nom_audio = 0;
+
+int buff_rx[5];
+int buff_tx[5];
+
+uint8_t pipeNo;
+uint8_t address[][6] = {"1Node", "2Node", "3Node", "4Node", "5Node", "6Node"}; // возможные номера труб
+
 void setup()
 
 {
@@ -70,6 +96,8 @@ void setup()
 
   dfmp3.stop(); //зупинити програш аудіофайлу
   digitalWrite(SPEEKER, 0); //виключити підсилювач
+
+  radioSetup();
 }
 
 
@@ -149,4 +177,26 @@ void loop()
     }
     IrReceiver.resume();
   }
+  if (radio.available(&pipeNo)){
+    radio.read(buff_rx, sizeof(buff_rx));
+    buff_tx[0] = 30;
+    radio.writeAckPayload(pipeNo, &buff_tx, sizeof(buff_tx));
+
+  }
+}
+
+void radioSetup() {             // настройка радио
+  radio.begin();                // активировать модуль
+  radio.setAutoAck(1);          // режим подтверждения приёма, 1 вкл 0 выкл
+  radio.setRetries(0, 15);      // (время между попыткой достучаться, число попыток)
+  radio.enableAckPayload();     // разрешить отсылку данных в ответ на входящий сигнал
+  radio.setPayloadSize(32);     // размер пакета, байт
+  radio.openReadingPipe(1, address[0]); // хотим слушать трубу 0
+  radio.setChannel(CH_NUM);     // выбираем канал (в котором нет шумов!)
+  radio.setPALevel(SIG_POWER);  // уровень мощности передатчика
+  radio.setDataRate(SIG_SPEED); // скорость обмена
+  // должна быть одинакова на приёмнике и передатчике!
+  // при самой низкой скорости имеем самую высокую чувствительность и дальность!!
+  radio.powerUp();         // начать работу
+  radio.startListening();  // начинаем слушать эфир, мы приёмный модуль
 }
